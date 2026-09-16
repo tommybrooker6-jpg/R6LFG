@@ -188,11 +188,40 @@ class LFGCog(commands.Cog):
         if not group or group.owner_id != interaction.user.id:
             await interaction.response.send_message("Not authorized.", ephemeral=True)
             return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
         await self.db.update_group_fields(group_id, region=region, rank=rank)
         await self.db.touch_group(group_id)
-        await self._refresh_listing(interaction.guild, group_id)
-        await interaction.response.edit_message(
-            content=f"Group #{group_id} updated to **{region} {rank}**.", view=None
+
+        # Re-fetch so downstream refreshes see the new region/rank
+        group = await self.db.get_group(group_id)
+        guild = interaction.guild
+
+        # Rename the private thread to match the new region/rank
+        if group.thread_id:
+            thread = guild.get_thread(group.thread_id)
+            if thread:
+                try:
+                    await thread.edit(name=f"R6 {region} {rank} — Group #{group_id}")
+                except discord.HTTPException:
+                    pass
+
+        # Rename the voice channel if one already exists
+        if group.voice_channel_id:
+            vc = guild.get_channel(group.voice_channel_id)
+            if vc:
+                try:
+                    await vc.edit(name=voice_channel_name(group))
+                except discord.HTTPException:
+                    pass
+
+        # Refresh the detail embed (thread), the announcement (public channel)
+        await self._refresh_listing(guild, group_id)
+        await self._refresh_announcement(guild, group_id)
+
+        await interaction.followup.send(
+            f"Group #{group_id} updated to **{region} {rank}**.", ephemeral=True
         )
 
     async def close_group_flow(self, interaction: discord.Interaction, group_id: int):
