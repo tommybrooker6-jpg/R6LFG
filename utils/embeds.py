@@ -59,9 +59,8 @@ def group_announcement_embed(group, member_count: int = 1) -> discord.Embed:
 
 
 def voice_channel_name(group) -> str:
-    """e.g. 'R6 EU CHAMP'"""
-    rank_short = group.rank.upper()[:5]
-    return f"R6 {group.region} {rank_short}"[:100]
+    """e.g. 'EU CHAMPION'"""
+    return f"{group.region} {group.rank.upper()}"[:100]
 
 
 def ubisoft_checklist_embed(group, members_with_names: list[tuple]) -> discord.Embed:
