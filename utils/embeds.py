@@ -37,8 +37,24 @@ def group_listing_embed(group, members: list[discord.Member], guild: discord.Gui
         e.add_field(name="Note", value=group.note, inline=False)
     e.add_field(name="Members", value=member_lines, inline=False)
 
-    status_text = "🟢 Open — click Join!" if not is_full and group.status == "open" else "🔴 Full"
+    status_text = "🟢 Open" if not is_full and group.status == "open" else "🔴 Full"
     e.set_footer(text=f"{status_text} • Group #{group.id}")
+    return e
+
+
+def group_announcement_embed(group, member_count: int = 1) -> discord.Embed:
+    """Short one-liner posted in the public LFG channel; full details live in the thread."""
+    emoji = RANK_EMOJI.get(group.rank, "")
+    owner_mention = f"<@{group.owner_id}>"
+    is_full = member_count >= group.max_size or group.status == "full"
+    color = EMBED_COLOR_FULL if is_full else EMBED_COLOR
+
+    e = discord.Embed(
+        description=f"{emoji} {owner_mention} created an **R6 {group.region} {group.rank.upper()}** group.",
+        color=color,
+    )
+    footer = "🔴 Full" if is_full else f"🟢 {member_count}/{group.max_size} • Click Join to get access to the group thread"
+    e.set_footer(text=f"Group #{group.id} • {footer}")
     return e
 
 

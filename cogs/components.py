@@ -198,20 +198,32 @@ class SettingsView(ui.View):
         )
 
 
-class GroupListingView(ui.View):
-    """Persistent view attached to each posted group listing embed."""
+class GroupAnnouncementView(ui.View):
+    """Persistent view attached to the short announcement posted in the public LFG channel.
+    Only a Join button lives here — non-members can't see inside the private thread,
+    so this is the only entry point for people who aren't in the group yet."""
 
     def __init__(self, cog, group_id: int):
         super().__init__(timeout=None)
         self.cog = cog
         self.group_id = group_id
         self.join_button.custom_id = f"lfg:join:{group_id}"
-        self.leave_button.custom_id = f"lfg:leave:{group_id}"
-        self.voice_button.custom_id = f"lfg:voice:{group_id}"
 
     @ui.button(label="Join", style=discord.ButtonStyle.success, emoji="➕")
     async def join_button(self, interaction: discord.Interaction, button: ui.Button):
         await self.cog.join_group(interaction, self.group_id)
+
+
+class GroupThreadView(ui.View):
+    """Persistent view attached to the full detail embed inside the group's private thread.
+    Only current members can see this thread at all, so Leave/Voice live here."""
+
+    def __init__(self, cog, group_id: int):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.group_id = group_id
+        self.leave_button.custom_id = f"lfg:threadleave:{group_id}"
+        self.voice_button.custom_id = f"lfg:voice:{group_id}"
 
     @ui.button(label="Leave", style=discord.ButtonStyle.danger, emoji="➖")
     async def leave_button(self, interaction: discord.Interaction, button: ui.Button):

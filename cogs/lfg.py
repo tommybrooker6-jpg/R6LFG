@@ -7,9 +7,11 @@ from config import (
     CATEGORY_NAME, LFG_TEXT_CHANNEL_NAME, EMBED_COLOR,
     DEFAULT_MAX_SIZE,
 )
-from utils.embeds import control_panel_embed, group_listing_embed, voice_channel_name
+from utils.embeds import (
+    control_panel_embed, group_listing_embed, group_announcement_embed, voice_channel_name,
+)
 from cogs.components import (
-    CreateGroupView, EditGroupView, SettingsView, GroupListingView,
+    CreateGroupView, EditGroupView, SettingsView, GroupAnnouncementView, GroupThreadView,
 )
 
 
@@ -134,13 +136,12 @@ class LFGCog(commands.Cog):
             region=region, rank=rank, max_size=max_size, note=note,
         )
 
-        # Post the listing embed in the LFG channel
-        members = [interaction.user]
-        embed = group_listing_embed(group, members, guild)
-        msg = await channel.send(embed=embed, view=GroupListingView(self, group.id))
+        # Post the short public announcement (Join button only) in the LFG channel
+        announcement = group_announcement_embed(group)
+        msg = await channel.send(embed=announcement, view=GroupAnnouncementView(self, group.id))
         await self.db.update_group_fields(group.id, message_id=msg.id)
 
-        # Create private thread for the group
+        # Create private thread for the group — this is where the full detail card lives
         thread = await channel.create_thread(
             name=f"R6 {region} {rank} — Group #{group.id}",
             type=discord.ChannelType.private_thread,
@@ -148,14 +149,14 @@ class LFGCog(commands.Cog):
         )
         await self.db.update_group_fields(group.id, thread_id=thread.id)
         await thread.add_user(interaction.user)
-        await thread.send(
-            f"🎮 Group created by {interaction.user.mention}! "
-            f"This is your private group chat. The owner can create a voice channel "
-            f"from the listing once everyone has joined."
-        )
+
+        members = [interaction.user]
+        detail_embed = group_listing_embed(group, members, guild)
+        detail_msg = await thread.send(embed=detail_embed, view=GroupThreadView(self, group.id))
+        await self.db.update_group_fields(group.id, thread_message_id=detail_msg.id)
 
         await interaction.response.send_message(
-            f"Group created! Check {channel.mention} — your private thread is {thread.mention}.",
+            f"Group created! Your private thread is {thread.mention}.",
             ephemeral=True,
         )
 
@@ -234,6 +235,7 @@ class LFGCog(commands.Cog):
             await self.db.update_group_fields(group_id, status="full")
 
         await self._refresh_listing(guild, group_id)
+        await self._refresh_announcement(guild, group_id)
         await interaction.response.send_message(
             f"Joined the group! Head to {thread.mention if thread else 'the group thread'}.",
             ephemeral=True,
@@ -275,6 +277,7 @@ class LFGCog(commands.Cog):
             await thread.send(f"➖ {interaction.user.mention} left the group.")
 
         await self._refresh_listing(guild, group_id)
+        await self._refresh_announcement(guild, group_id)
         await interaction.response.send_message("You left the group.", ephemeral=True)
 
     # ---------------------------------------------------------------
@@ -370,6 +373,25 @@ class LFGCog(commands.Cog):
     # ---------------------------------------------------------------
 
     async def _refresh_listing(self, guild: discord.Guild, group_id: int):
+        """Update the full detail embed inside the group's private thread."""
+        group = await self.db.get_group(group_id)
+        if not group or not group.thread_id or not group.thread_message_id:
+            return
+        thread = guild.get_thread(group.thread_id)
+        if not thread:
+            return
+        try:
+            msg = await thread.fetch_message(group.thread_message_id)
+        except discord.NotFound:
+            return
+        member_ids = await self.db.get_members(group_id)
+        members = [guild.get_member(uid) or discord.Object(id=uid) for uid in member_ids]
+        members = [m for m in members if isinstance(m, discord.Member)]
+        embed = group_listing_embed(group, members, guild)
+        await msg.edit(embed=embed, view=GroupThreadView(self, group_id))
+
+    async def _refresh_announcement(self, guild: discord.Guild, group_id: int):
+        """Update the short public announcement's footer/color and disable Join if full."""
         group = await self.db.get_group(group_id)
         if not group or not group.message_id:
             return
@@ -381,11 +403,13 @@ class LFGCog(commands.Cog):
             msg = await channel.fetch_message(group.message_id)
         except discord.NotFound:
             return
-        member_ids = await self.db.get_members(group_id)
-        members = [guild.get_member(uid) or discord.Object(id=uid) for uid in member_ids]
-        members = [m for m in members if isinstance(m, discord.Member)]
-        embed = group_listing_embed(group, members, guild)
-        await msg.edit(embed=embed, view=GroupListingView(self, group_id))
+        count = await self.db.count_members(group_id)
+        embed = group_announcement_embed(group, member_count=count)
+        view = GroupAnnouncementView(self, group_id)
+        if count >= group.max_size or group.status == "full":
+            view.join_button.disabled = True
+            view.join_button.label = "Full"
+        await msg.edit(embed=embed, view=view)
 
     async def _teardown_group(self, guild: discord.Guild, group, reason: str = ""):
         """Close a group: remove listing, delete thread, delete voice channel."""

@@ -35,6 +35,7 @@ class Group:
     note: str
     message_id: Optional[int]
     thread_id: Optional[int]
+    thread_message_id: Optional[int]
     voice_channel_id: Optional[int]
     created_at: float
     last_active_at: float
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS groups (
     note TEXT NOT NULL DEFAULT '',
     message_id INTEGER,
     thread_id INTEGER,
+    thread_message_id INTEGER,
     voice_channel_id INTEGER,
     created_at REAL NOT NULL,
     last_active_at REAL NOT NULL,
@@ -86,6 +88,15 @@ class Database:
         self._conn.row_factory = aiosqlite.Row
         await self._conn.executescript(SCHEMA)
         await self._conn.commit()
+        await self._migrate()
+
+    async def _migrate(self):
+        """Add columns introduced after initial release, for DBs created by older versions."""
+        cur = await self._conn.execute("PRAGMA table_info(groups)")
+        cols = {row["name"] for row in await cur.fetchall()}
+        if "thread_message_id" not in cols:
+            await self._conn.execute("ALTER TABLE groups ADD COLUMN thread_message_id INTEGER")
+            await self._conn.commit()
 
     async def close(self):
         if self._conn:
@@ -264,6 +275,7 @@ class Database:
             note=row["note"],
             message_id=row["message_id"],
             thread_id=row["thread_id"],
+            thread_message_id=row["thread_message_id"],
             voice_channel_id=row["voice_channel_id"],
             created_at=row["created_at"],
             last_active_at=row["last_active_at"],
