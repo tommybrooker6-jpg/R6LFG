@@ -228,6 +228,9 @@ class UbisoftCheckinView(ui.View):
         async def cb(modal_interaction: discord.Interaction, name: str):
             await self.cog.submit_ubisoft_name(modal_interaction, self.group_id, name)
         await interaction.response.send_modal(UbisoftNameModal(cb))
+
+
+class GroupAnnouncementView(ui.View):
     """Persistent view attached to the short announcement posted in the public LFG channel.
     Only a Join button lives here — non-members can't see inside the private thread,
     so this is the only entry point for people who aren't in the group yet."""
