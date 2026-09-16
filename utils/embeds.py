@@ -1,5 +1,5 @@
 import discord
-from config import EMBED_COLOR, EMBED_COLOR_FULL, RANK_EMOJI
+from config import EMBED_COLOR, EMBED_COLOR_FULL, EMBED_COLOR_SUCCESS, RANK_EMOJI
 
 
 def control_panel_embed() -> discord.Embed:
@@ -62,3 +62,26 @@ def voice_channel_name(group) -> str:
     """e.g. 'R6 EU CHAMP'"""
     rank_short = group.rank.upper()[:5]
     return f"R6 {group.region} {rank_short}"[:100]
+
+
+def ubisoft_checklist_embed(group, members_with_names: list[tuple]) -> discord.Embed:
+    """members_with_names: list of (discord.Member, ubisoft_name_or_None)."""
+    lines = []
+    submitted = 0
+    for member, name in members_with_names:
+        if name:
+            lines.append(f"✅ {member.mention} — `{name}`")
+            submitted += 1
+        else:
+            lines.append(f"❌ {member.mention} — *not submitted*")
+
+    e = discord.Embed(
+        title="🎮 Ubisoft Connect Check-In",
+        description=(
+            "Voice channel is up! Everyone needs to submit their **Ubisoft Connect name** "
+            "so the group can add each other and get into the match.\n\n" + "\n".join(lines)
+        ),
+        color=EMBED_COLOR if submitted < len(members_with_names) else EMBED_COLOR_SUCCESS,
+    )
+    e.set_footer(text=f"{submitted}/{len(members_with_names)} submitted • Group #{group.id}")
+    return e

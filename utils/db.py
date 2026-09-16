@@ -37,6 +37,7 @@ class Group:
     thread_id: Optional[int]
     thread_message_id: Optional[int]
     voice_channel_id: Optional[int]
+    checklist_message_id: Optional[int]
     created_at: float
     last_active_at: float
     status: str  # 'open', 'full', 'closed'
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS groups (
     thread_id INTEGER,
     thread_message_id INTEGER,
     voice_channel_id INTEGER,
+    checklist_message_id INTEGER,
     created_at REAL NOT NULL,
     last_active_at REAL NOT NULL,
     status TEXT NOT NULL DEFAULT 'open'
@@ -73,6 +75,7 @@ CREATE TABLE IF NOT EXISTS group_members (
     group_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     joined_at REAL NOT NULL,
+    ubisoft_name TEXT,
     PRIMARY KEY (group_id, user_id)
 );
 """
@@ -96,6 +99,15 @@ class Database:
         cols = {row["name"] for row in await cur.fetchall()}
         if "thread_message_id" not in cols:
             await self._conn.execute("ALTER TABLE groups ADD COLUMN thread_message_id INTEGER")
+            await self._conn.commit()
+        if "checklist_message_id" not in cols:
+            await self._conn.execute("ALTER TABLE groups ADD COLUMN checklist_message_id INTEGER")
+            await self._conn.commit()
+
+        cur = await self._conn.execute("PRAGMA table_info(group_members)")
+        member_cols = {row["name"] for row in await cur.fetchall()}
+        if "ubisoft_name" not in member_cols:
+            await self._conn.execute("ALTER TABLE group_members ADD COLUMN ubisoft_name TEXT")
             await self._conn.commit()
 
     async def close(self):
@@ -256,6 +268,23 @@ class Database:
         rows = await cur.fetchall()
         return [r["user_id"] for r in rows]
 
+    async def get_members_with_ubisoft(self, group_id: int) -> List[tuple]:
+        """Returns list of (user_id, ubisoft_name_or_None) ordered by join time."""
+        cur = await self._conn.execute(
+            "SELECT user_id, ubisoft_name FROM group_members WHERE group_id = ? "
+            "ORDER BY joined_at ASC",
+            (group_id,),
+        )
+        rows = await cur.fetchall()
+        return [(r["user_id"], r["ubisoft_name"]) for r in rows]
+
+    async def set_ubisoft_name(self, group_id: int, user_id: int, name: str):
+        await self._conn.execute(
+            "UPDATE group_members SET ubisoft_name = ? WHERE group_id = ? AND user_id = ?",
+            (name, group_id, user_id),
+        )
+        await self._conn.commit()
+
     async def count_members(self, group_id: int) -> int:
         cur = await self._conn.execute(
             "SELECT COUNT(*) as c FROM group_members WHERE group_id = ?", (group_id,)
@@ -277,6 +306,7 @@ class Database:
             thread_id=row["thread_id"],
             thread_message_id=row["thread_message_id"],
             voice_channel_id=row["voice_channel_id"],
+            checklist_message_id=row["checklist_message_id"],
             created_at=row["created_at"],
             last_active_at=row["last_active_at"],
             status=row["status"],

@@ -8,10 +8,12 @@ from config import (
     DEFAULT_MAX_SIZE,
 )
 from utils.embeds import (
-    control_panel_embed, group_listing_embed, group_announcement_embed, voice_channel_name,
+    control_panel_embed, group_listing_embed, group_announcement_embed,
+    voice_channel_name, ubisoft_checklist_embed,
 )
 from cogs.components import (
     CreateGroupView, EditGroupView, SettingsView, GroupAnnouncementView, GroupThreadView,
+    UbisoftCheckinView,
 )
 
 
@@ -327,9 +329,41 @@ class LFGCog(commands.Cog):
 
         thread = guild.get_thread(group.thread_id) if group.thread_id else None
         if thread:
-            await thread.send(f"🔊 Voice channel created: {vc.mention}")
+            member_mentions = " ".join(f"<@{uid}>" for uid in members)
+            await thread.send(
+                f"🔊 Voice channel created: {vc.mention}\n\n"
+                f"{member_mentions} — everyone needs to submit their **Ubisoft Connect name** "
+                f"below so the group can add each other and get into the match."
+            )
+            checklist_members = [
+                (guild.get_member(uid), name)
+                for uid, name in await self.db.get_members_with_ubisoft(group_id)
+            ]
+            checklist_members = [(m, n) for m, n in checklist_members if m is not None]
+            checklist_embed = ubisoft_checklist_embed(group, checklist_members)
+            checklist_msg = await thread.send(embed=checklist_embed, view=UbisoftCheckinView(self, group_id))
+            await self.db.update_group_fields(group_id, checklist_message_id=checklist_msg.id)
 
         await interaction.response.send_message(f"Voice channel created: {vc.mention}", ephemeral=True)
+
+    async def submit_ubisoft_name(self, interaction: discord.Interaction, group_id: int, name: str):
+        group = await self.db.get_group(group_id)
+        if not group:
+            await interaction.response.send_message("Group not found.", ephemeral=True)
+            return
+        members = await self.db.get_members(group_id)
+        if interaction.user.id not in members:
+            await interaction.response.send_message(
+                "You're not a member of this group.", ephemeral=True
+            )
+            return
+
+        await self.db.set_ubisoft_name(group_id, interaction.user.id, name)
+        await self.db.touch_group(group_id)
+        await self._refresh_checklist(interaction.guild, group_id)
+        await interaction.response.send_message(
+            f"Got it — your Ubisoft Connect name is set to **{name}**.", ephemeral=True
+        )
 
     # ---------------------------------------------------------------
     # Settings flow
@@ -410,6 +444,25 @@ class LFGCog(commands.Cog):
             view.join_button.disabled = True
             view.join_button.label = "Full"
         await msg.edit(embed=embed, view=view)
+
+    async def _refresh_checklist(self, guild: discord.Guild, group_id: int):
+        group = await self.db.get_group(group_id)
+        if not group or not group.thread_id or not group.checklist_message_id:
+            return
+        thread = guild.get_thread(group.thread_id)
+        if not thread:
+            return
+        try:
+            msg = await thread.fetch_message(group.checklist_message_id)
+        except discord.NotFound:
+            return
+        checklist_members = [
+            (guild.get_member(uid), name)
+            for uid, name in await self.db.get_members_with_ubisoft(group_id)
+        ]
+        checklist_members = [(m, n) for m, n in checklist_members if m is not None]
+        embed = ubisoft_checklist_embed(group, checklist_members)
+        await msg.edit(embed=embed, view=UbisoftCheckinView(self, group_id))
 
     async def _teardown_group(self, guild: discord.Guild, group, reason: str = ""):
         """Close a group: remove listing, delete thread, delete voice channel."""

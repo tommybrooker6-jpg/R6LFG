@@ -198,7 +198,36 @@ class SettingsView(ui.View):
         )
 
 
-class GroupAnnouncementView(ui.View):
+class UbisoftNameModal(ui.Modal, title="Submit Ubisoft Connect Name"):
+    name = ui.TextInput(
+        label="Your Ubisoft Connect username",
+        placeholder="e.g. Ash.Main123",
+        max_length=50,
+        required=True,
+    )
+
+    def __init__(self, on_submit_callback):
+        super().__init__()
+        self._cb = on_submit_callback
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self._cb(interaction, str(self.name.value).strip())
+
+
+class UbisoftCheckinView(ui.View):
+    """Posted in the thread once a voice channel is created; every member submits their name here."""
+
+    def __init__(self, cog, group_id: int):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.group_id = group_id
+        self.submit_button.custom_id = f"lfg:ubisubmit:{group_id}"
+
+    @ui.button(label="Submit Ubisoft Name", style=discord.ButtonStyle.primary, emoji="🎮")
+    async def submit_button(self, interaction: discord.Interaction, button: ui.Button):
+        async def cb(modal_interaction: discord.Interaction, name: str):
+            await self.cog.submit_ubisoft_name(modal_interaction, self.group_id, name)
+        await interaction.response.send_modal(UbisoftNameModal(cb))
     """Persistent view attached to the short announcement posted in the public LFG channel.
     Only a Join button lives here — non-members can't see inside the private thread,
     so this is the only entry point for people who aren't in the group yet."""
