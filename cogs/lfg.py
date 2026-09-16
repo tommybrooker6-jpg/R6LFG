@@ -124,11 +124,13 @@ class LFGCog(commands.Cog):
 
     async def finalize_create_group(self, interaction: discord.Interaction, region: str,
                                      rank: str, max_size: int, note: str):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
         guild = interaction.guild
         settings = await self.db.get_settings(guild.id)
         channel = guild.get_channel(settings.lfg_channel_id)
         if channel is None:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "LFG channel isn't set up yet. Ask an admin to run /lfg-setup.", ephemeral=True
             )
             return
@@ -157,7 +159,7 @@ class LFGCog(commands.Cog):
         detail_msg = await thread.send(embed=detail_embed, view=GroupThreadView(self, group.id))
         await self.db.update_group_fields(group.id, thread_message_id=detail_msg.id)
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Group created! Your private thread is {thread.mention}.",
             ephemeral=True,
         )
@@ -223,6 +225,8 @@ class LFGCog(commands.Cog):
             await interaction.response.send_message("This group is full.", ephemeral=True)
             return
 
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
         await self.db.add_member(group_id, interaction.user.id)
         await self.db.touch_group(group_id)
 
@@ -238,7 +242,7 @@ class LFGCog(commands.Cog):
 
         await self._refresh_listing(guild, group_id)
         await self._refresh_announcement(guild, group_id)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Joined the group! Head to {thread.mention if thread else 'the group thread'}.",
             ephemeral=True,
         )
@@ -265,6 +269,8 @@ class LFGCog(commands.Cog):
             await self._teardown_group(guild, group, reason="owner left")
             return
 
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
         await self.db.remove_member(group_id, interaction.user.id)
         await self.db.touch_group(group_id)
         if group.status == "full":
@@ -280,7 +286,7 @@ class LFGCog(commands.Cog):
 
         await self._refresh_listing(guild, group_id)
         await self._refresh_announcement(guild, group_id)
-        await interaction.response.send_message("You left the group.", ephemeral=True)
+        await interaction.followup.send("You left the group.", ephemeral=True)
 
     # ---------------------------------------------------------------
     # Voice channel creation (owner only, from the listing)
@@ -303,6 +309,8 @@ class LFGCog(commands.Cog):
                     f"Voice channel already exists: {channel.mention}", ephemeral=True
                 )
                 return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         guild = interaction.guild
         settings = await self.db.get_settings(guild.id)
@@ -344,7 +352,7 @@ class LFGCog(commands.Cog):
             checklist_msg = await thread.send(embed=checklist_embed, view=UbisoftCheckinView(self, group_id))
             await self.db.update_group_fields(group_id, checklist_message_id=checklist_msg.id)
 
-        await interaction.response.send_message(f"Voice channel created: {vc.mention}", ephemeral=True)
+        await interaction.followup.send(f"Voice channel created: {vc.mention}", ephemeral=True)
 
     async def submit_ubisoft_name(self, interaction: discord.Interaction, group_id: int, name: str):
         group = await self.db.get_group(group_id)
